@@ -1,23 +1,24 @@
+// Package mapget provides map downloader implementation.
 package mapget
-
-// mapget.go provides map downloader implementation.
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/PlaceDescriber/PlaceDescriber/geography"
 	"github.com/PlaceDescriber/PlaceDescriber/types"
-	"golang.org/x/sync/semaphore"
+	"golang.org/x/net/context/ctxhttp"
 )
 
 const (
-	GOROUTINES_MAX = 50
+	TILE_SIZE = 256
 )
 
 // TODO: think if we need JSON config file and flag for that.
@@ -26,8 +27,8 @@ type TypeToUrl map[types.MapType]string
 // TODO: support more map providers.
 var URLS = map[string]TypeToUrl{
 	"yandex": TypeToUrl{
-		types.PLAN:      "https://vec01.maps.yandex.net/tiles?l=map&x=%s&y=%s&z=%s&scale=%s&lang=%s",
-		types.SATELLITE: "https://sat01.maps.yandex.net/tiles?l=sat&x=%s&y=%s&z=%s&scale=%s&lang=%s",
+		types.PLAN:      "https://vec01.maps.yandex.net/tiles?l=map&x=%d&y=%d&z=%d&scale=%d&lang=%s",
+		types.SATELLITE: "https://sat01.maps.yandex.net/tiles?l=sat&x=%d&y=%d&z=%d&scale=%d&lang=%s",
 	},
 }
 
@@ -39,6 +40,47 @@ type MapDescription struct {
 	MinZoom  int           `json:"min_zoom"`
 	MaxZoom  int           `json:"max_zoom"`
 	Scale    int           `json:"scale"`
+}
+
+type DownloadParams struct {
+	GoroutinesNum int `json:"goroutines_num"`
+	RetryTimes    int `json:"retry_times"`
+}
+
+type DownloadTask struct {
+	Tile  *geography.MapTile `json:"tile"`
+	Scale int                `json:"scale"`
+}
+
+type Loader interface {
+	Do(ctx context.Context, url string) (io.ReadCloser, error)
+}
+
+type DefaultLoader struct {
+}
+
+func prepareHeader(header *http.Header) {
+	// TODO: check if these headers are relevant, check the order.
+	header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; rv:52.0) Gecko/20100101 Firefox/52.0")
+	header.Set("Accept", "*/*")
+	header.Set("Accept-Language", "en-US,en;q=0.5")
+	header.Set("Accept-Encoding", "gzip, deflate, br")
+	header.Set("Referer", "blablabla")
+	header.Set("Connection", "keep-alive")
+}
+
+func (s DefaultLoader) Do(ctx context.Context, url string) (io.ReadCloser, error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	prepareHeader(&req.Header)
+	res, err := ctxhttp.Do(ctx, client, req)
+	if err != nil {
+		return nil, err
+	}
+	return res.Body, nil
 }
 
 func min(x, y int) int {
@@ -62,70 +104,85 @@ func extremeTileNumbers(z int, mapArea types.Polygon) (int, int, int, int, error
 	return min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1), err
 }
 
-func prepareHeader(header *http.Header) {
-	// TODO: check if these headers are relevant, check the order.
-	header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; rv:52.0) Gecko/20100101 Firefox/52.0")
-	header.Set("Accept", "*/*")
-	header.Set("Accept-Language", "en-US,en;q=0.5")
-	header.Set("Accept-Encoding", "gzip, deflate, br")
-	header.Set("Referer", "blablabla")
-	header.Set("Connection", "keep-alive")
-}
-
 func downloadTile(
-	tile *geography.MapTile,
-	scale int,
-	out chan *geography.MapTile,
-	err chan error,
-) {
-	client := &http.Client{}
+	ctx context.Context,
+	task *DownloadTask,
+	client Loader,
+) (*geography.MapTile, error) {
+	tile := task.Tile
 	_, ok := URLS[tile.Provider]
 	if !ok {
-		err <- errors.New(fmt.Sprintf("downloadTile: bad map provider %s", tile.Provider))
-		return
+		return nil, errors.New(fmt.Sprintf("downloadTile: bad map provider %s", tile.Provider))
 	}
 	url, ok := URLS[tile.Provider][tile.Type]
 	if !ok {
-		err <- errors.New(fmt.Sprintf("downloadTile: bad map type %s", tile.Type))
-		return
+		return nil, errors.New(fmt.Sprintf("downloadTile: bad map type %d", tile.Type))
 	}
-	fmt.Sprintf(url, tile.X, tile.Y, tile.Z, scale, tile.Language)
-	req, err0 := http.NewRequest("GET", url, nil)
-	if err0 != nil {
-		err <- err0
-		return
+	url = fmt.Sprintf(url, tile.X, tile.Y, tile.Z, task.Scale, tile.Language)
+	body, err := client.Do(ctx, url)
+	if err != nil {
+		return nil, err
 	}
-	prepareHeader(&req.Header)
-	res, err0 := client.Do(req)
-	if err0 != nil {
-		err <- err0
-		return
+	defer body.Close()
+	tile.Content, err = ioutil.ReadAll(body)
+	if err != nil {
+		return nil, err
 	}
-	defer res.Body.Close()
-	tile.Content, err0 = ioutil.ReadAll(res.Body)
-	if err0 != nil {
-		err <- err0
-		return
-	}
-	out <- tile
+	return tile, nil
 }
 
-func DownloadMap(mapDesc MapDescription, out chan *geography.MapTile, err chan error) {
-	var wg sync.WaitGroup
-	ctx := context.TODO()
-	sem := semaphore.NewWeighted(int64(GOROUTINES_MAX))
+func downloadTileWrapper(
+	ctx context.Context,
+	retryTimes int,
+	task *DownloadTask,
+	client Loader,
+) (*geography.MapTile, error) {
+	for i := 0; i < retryTimes; i++ {
+		tile, err := downloadTile(ctx, task, client)
+		if err == nil {
+			return tile, nil
+		}
+		log.Printf("downloadTile failed with %v", err)
+	}
+	err := errors.New(fmt.Sprintf("downloadTileWrapper: tried %d times and failed", retryTimes))
+	log.Printf("%v", err)
+	return nil, err
+}
+
+func solveTasks(
+	ctx context.Context,
+	retryTimes int,
+	tasks <-chan *DownloadTask,
+	out chan<- *geography.MapTile,
+	client Loader,
+) error {
+	for task := range tasks {
+		tile, err := downloadTileWrapper(ctx, retryTimes, task, client)
+		if err != nil {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case out <- tile:
+		}
+	}
+	return nil
+}
+
+func createTasks(
+	ctx context.Context,
+	mapDesc MapDescription,
+	tasks chan<- *DownloadTask,
+) error {
 	for z := mapDesc.MinZoom; z <= mapDesc.MaxZoom; z++ {
-		minX, maxX, minY, maxY, err0 := extremeTileNumbers(z, mapDesc.MapArea)
-		if err0 != nil {
-			err <- err0
-			return
+		minX, maxX, minY, maxY, err := extremeTileNumbers(z, mapDesc.MapArea)
+		if err != nil {
+			close(tasks)
+			return err
 		}
 		for x := minX; x <= maxX; x++ {
 			for y := minY; y <= maxY; y++ {
-				if err1 := sem.Acquire(ctx, 1); err1 != nil {
-					err <- errors.New(fmt.Sprintf("Failed to acquire semaphore: %v", err1))
-					return
-				}
 				tile := &geography.MapTile{
 					Z:        z,
 					Y:        y,
@@ -135,17 +192,62 @@ func DownloadMap(mapDesc MapDescription, out chan *geography.MapTile, err chan e
 					Type:     mapDesc.Type,
 					Language: mapDesc.Language,
 				}
-				wg.Add(1)
-				go func() {
-					defer sem.Release(1)
-					defer wg.Done()
-					downloadTile(tile, mapDesc.Scale, out, err)
-				}()
+				task := &DownloadTask{
+					Tile:  tile,
+					Scale: mapDesc.Scale,
+				}
+				select {
+				case <-ctx.Done():
+					close(tasks)
+					return ctx.Err()
+				case tasks <- task:
+				}
 			}
 		}
 	}
+	close(tasks)
+	return nil
+}
+
+func DownloadMap(
+	ctx context.Context,
+	params DownloadParams,
+	mapDesc MapDescription,
+	out chan<- *geography.MapTile,
+	client Loader,
+) error {
+	ctx, cancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	var mtx sync.Mutex
+	var err error
+	tasks := make(chan *DownloadTask)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err1 := createTasks(ctx, mapDesc, tasks)
+		if err1 != nil {
+			log.Printf("Task creation failed with %v.\n", err1)
+			cancel()
+			mtx.Lock()
+			err = err1
+			mtx.Unlock()
+		}
+	}()
+	for i := 0; i < params.GoroutinesNum; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err1 := solveTasks(ctx, params.RetryTimes, tasks, out, client)
+			if err1 != nil {
+				log.Printf("Task failed with %v.\n", err1)
+				mtx.Lock()
+				err = err1
+				mtx.Unlock()
+				cancel()
+			}
+		}()
+	}
 	wg.Wait()
-	err <- nil
 	close(out)
-	close(err)
+	return err
 }
