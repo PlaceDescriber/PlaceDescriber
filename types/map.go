@@ -4,6 +4,13 @@ package types
 
 type MapType int
 
+var MapTypesToStr = map[MapType]string{
+	PLAN:       "plan",
+	SATELLITE:  "satellite",
+	HYBRID:     "hybrid",
+	DESCRIPTOR: "descriptor",
+}
+
 const (
 	PLAN MapType = iota
 	SATELLITE
