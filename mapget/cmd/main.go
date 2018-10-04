@@ -36,7 +36,7 @@ const PATH_TEMPLATE = "%s/%s/%s/%s/%s/%s"
 
 func getCurTime() string {
 	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).String()
+	return fmt.Sprintf("%d-%d-%d", now.Year(), now.Month(), now.Day())
 }
 
 func expandTilde(path string) (string, error) {
