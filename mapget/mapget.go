@@ -3,7 +3,6 @@ package mapget
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -20,17 +19,6 @@ import (
 const (
 	TILE_SIZE = 256
 )
-
-// TODO: think if we need JSON config file and flag for that.
-type TypeToUrl map[types.MapType]string
-
-// TODO: support more map providers.
-var URLS = map[string]TypeToUrl{
-	"yandex": TypeToUrl{
-		types.PLAN:      "https://vec01.maps.yandex.net/tiles?l=map&x=%d&y=%d&z=%d&scale=%d&lang=%s",
-		types.SATELLITE: "https://sat01.maps.yandex.net/tiles?l=sat&x=%d&y=%d&z=%d&scale=%d&lang=%s",
-	},
-}
 
 type MapDescription struct {
 	MapArea  types.Polygon `json:"map_area":`
@@ -97,10 +85,14 @@ func max(x, y int) int {
 	return y
 }
 
-func extremeTileNumbers(z int, mapArea types.Polygon) (int, int, int, int, error) {
+func extremeTileNumbers(
+	z int,
+	mapArea types.Polygon,
+	converter geography.Conversion,
+) (int, int, int, int, error) {
 	minLat, minLong, maxLat, maxLong, err := mapArea.ExtremeCoordinates()
-	x0, y0 := geography.DegToTileNum(types.Point{minLat, minLong}, z)
-	x1, y1 := geography.DegToTileNum(types.Point{maxLat, maxLong}, z)
+	x0, y0 := converter.DegToTileNum(types.Point{minLat, minLong}, z)
+	x1, y1 := converter.DegToTileNum(types.Point{maxLat, maxLong}, z)
 	return min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1), err
 }
 
@@ -110,15 +102,14 @@ func downloadTile(
 	client Loader,
 ) (*geography.MapTile, error) {
 	tile := task.Tile
-	_, ok := URLS[tile.Provider]
+	mapProj, ok := MapProjects[tile.Provider]
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("downloadTile: bad map provider %s", tile.Provider))
+		return nil, fmt.Errorf("downloadTile: bad map provider %s", tile.Provider)
 	}
-	url, ok := URLS[tile.Provider][tile.Type]
-	if !ok {
-		return nil, errors.New(fmt.Sprintf("downloadTile: bad map type %d", tile.Type))
+	url, err := mapProj.GetURL(tile.X, tile.Y, tile.Z, task.Scale, tile.Language, tile.Type)
+	if err != nil {
+		return nil, err
 	}
-	url = fmt.Sprintf(url, tile.X, tile.Y, tile.Z, task.Scale, tile.Language)
 	body, err := client.Do(ctx, url)
 	if err != nil {
 		return nil, err
@@ -144,7 +135,7 @@ func downloadTileWrapper(
 		}
 		log.Printf("downloadTile failed with %v", err)
 	}
-	err := errors.New(fmt.Sprintf("downloadTileWrapper: tried %d times and failed", retryTimes))
+	err := fmt.Errorf("downloadTileWrapper: tried %d times and failed", retryTimes)
 	log.Printf("%v", err)
 	return nil, err
 }
@@ -176,7 +167,12 @@ func createTasks(
 	tasks chan<- *DownloadTask,
 ) error {
 	for z := mapDesc.MinZoom; z <= mapDesc.MaxZoom; z++ {
-		minX, maxX, minY, maxY, err := extremeTileNumbers(z, mapDesc.MapArea)
+		mapProj, ok := MapProjects[mapDesc.Provider]
+		if !ok {
+			close(tasks)
+			return fmt.Errorf("createTasks: bad map provider %s", mapDesc.Provider)
+		}
+		minX, maxX, minY, maxY, err := extremeTileNumbers(z, mapDesc.MapArea, mapProj.Converter())
 		if err != nil {
 			close(tasks)
 			return err
