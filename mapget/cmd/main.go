@@ -22,17 +22,19 @@ var (
 	mapName       = flag.String("map-name", "", "Map name, will be used as sub-dir for tiles.")
 	coordinates   = flag.String("coordinates", "", "Path to JSON file describing what to download.")
 	provider      = flag.String("provider", "yandex", "One of possible map providers.")
-	mapType       = flag.Int("map-type", int(types.SATELLITE), "Map type.")
+	mapType       = flag.String("map-type", "satellite", "Map type.")
 	language      = flag.String("language", "en_EN", "Map language.")
 	minZoom       = flag.Int("min-zoom", 14, "Zoom level to start with.")
 	maxZoom       = flag.Int("max-zoom", 19, "Zoom level to finish with.")
 	scale         = flag.Int("scale", 1, "Tiles scale.")
 	downloadDir   = flag.String("download-dir", "~/maps", "Directory for tiles.")
-	goroutinesNum = flag.Int("goroutines-num", 10, "Number of goroutines to use while loading.")
+	goroutinesNum = flag.Int("goroutines-num", 25, "Number of goroutines to use while loading.")
 	retryTimes    = flag.Int("retry-times", 5, "Number of tries to download each of the tiles.")
 )
 
-const PATH_TEMPLATE = "%s/%s/%s/%s/%s/%s"
+const (
+	PATH_TEMPLATE = "%s/%s/%s/%s/%s/%s"
+)
 
 func getCurTime() string {
 	now := time.Now()
@@ -78,9 +80,17 @@ func main() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
+	typeStr, ok := types.StrToMapType[*mapType]
+	if !ok {
+		fmt.Printf("Please specify correct map type. Possible types are:\n")
+		for key, _ := range types.StrToMapType {
+			fmt.Printf("%s\n", key)
+		}
+		log.Fatalf("Stopping now.")
+	}
 	mapDesc := mapget.MapDescription{
 		Provider: *provider,
-		Type:     types.MapType(*mapType),
+		Type:     typeStr,
 		Language: *language,
 		MinZoom:  *minZoom,
 		MaxZoom:  *maxZoom,
@@ -106,7 +116,7 @@ func main() {
 		*downloadDir,
 		*mapName,
 		*provider,
-		types.MapTypesToStr[types.MapType(*mapType)],
+		*mapType,
 		*language,
 		getCurTime(),
 	)

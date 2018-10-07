@@ -4,11 +4,11 @@ package types
 
 type MapType int
 
-var MapTypesToStr = map[MapType]string{
-	PLAN:       "plan",
-	SATELLITE:  "satellite",
-	HYBRID:     "hybrid",
-	DESCRIPTOR: "descriptor",
+var StrToMapType = map[string]MapType{
+	"plan":       PLAN,
+	"satellite":  SATELLITE,
+	"hybrid":     HYBRID,
+	"descriptor": DESCRIPTOR,
 }
 
 const (
