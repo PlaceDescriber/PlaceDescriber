@@ -19,12 +19,12 @@ const (
 	GOROUTINES_NUMBER = 10
 	RETRY_TIMES       = 5
 	// RGB bounds for content test.
-	RED_MIN   = 43600
-	RED_MAX   = 43700
-	GREEN_MIN = 54200
-	GREEN_MAX = 54300
-	BLUE_MIN  = 59100
-	BLUE_MAX  = 59200
+	RED_MIN   = 42000
+	RED_MAX   = 53000
+	GREEN_MIN = 49000
+	GREEN_MAX = 59000
+	BLUE_MIN  = 53000
+	BLUE_MAX  = 63000
 )
 
 type TestLoader struct {
