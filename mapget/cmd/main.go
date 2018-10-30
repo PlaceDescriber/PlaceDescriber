@@ -29,7 +29,7 @@ var (
 	scale         = flag.Int("scale", 1, "Tiles scale.")
 	downloadDir   = flag.String("download-dir", "~/maps", "Directory for tiles.")
 	goroutinesNum = flag.Int("goroutines-num", 25, "Number of goroutines to use while loading.")
-	retryTimes    = flag.Int("retry-times", 5, "Number of tries to download each of the tiles.")
+	tryTimes      = flag.Int("try-times", 5, "Number of tries to download each of the tiles.")
 )
 
 const (
@@ -80,7 +80,7 @@ func main() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	typeStr, ok := types.StrToMapType[*mapType]
+	typeO, ok := types.StrToMapType[*mapType]
 	if !ok {
 		fmt.Printf("Please specify correct map type. Possible types are:\n")
 		for key, _ := range types.StrToMapType {
@@ -90,7 +90,7 @@ func main() {
 	}
 	mapDesc := mapget.MapDescription{
 		Provider: *provider,
-		Type:     typeStr,
+		Type:     typeO,
 		Language: *language,
 		MinZoom:  *minZoom,
 		MaxZoom:  *maxZoom,
@@ -109,7 +109,7 @@ func main() {
 	out := make(chan *geography.MapTile)
 	params := mapget.DownloadParams{
 		GoroutinesNum: *goroutinesNum,
-		RetryTimes:    *retryTimes,
+		TryTimes:      *tryTimes,
 	}
 	path := fmt.Sprintf(
 		PATH_TEMPLATE,

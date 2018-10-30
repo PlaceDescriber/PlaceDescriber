@@ -17,7 +17,7 @@ import (
 const (
 	// Downloading parameters.
 	GOROUTINES_NUMBER = 10
-	RETRY_TIMES       = 5
+	TRY_TIMES         = 5
 	// RGB bounds for content test.
 	RED_MIN   = 42000
 	RED_MAX   = 53000
@@ -85,6 +85,34 @@ func initMapDescription() MapDescription {
 	}
 }
 
+func TestIncorrectInput(t *testing.T) {
+	var wg sync.WaitGroup
+	var err error
+	out := make(chan *geography.MapTile)
+	loader := newTestLoader(1, 1)
+	params := DownloadParams{
+		GoroutinesNum: 10001,
+		TryTimes:      0,
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err = DownloadMap(
+			context.Background(),
+			params,
+			initMapDescription(),
+			out,
+			loader,
+		)
+	}()
+	for _ = range out {
+	}
+	wg.Wait()
+	if err == nil {
+		t.Errorf("DownloadMap didn't fail on incorrect input.")
+	}
+}
+
 func TestSingleFailure(t *testing.T) {
 	var wg sync.WaitGroup
 	var err error
@@ -92,7 +120,7 @@ func TestSingleFailure(t *testing.T) {
 	loader := newTestLoader(1, 1)
 	params := DownloadParams{
 		GoroutinesNum: GOROUTINES_NUMBER,
-		RetryTimes:    RETRY_TIMES,
+		TryTimes:      TRY_TIMES,
 	}
 	wg.Add(1)
 	go func() {
@@ -117,10 +145,10 @@ func TestMultipleFailures(t *testing.T) {
 	var wg sync.WaitGroup
 	var err error
 	out := make(chan *geography.MapTile)
-	loader := newTestLoader(1, RETRY_TIMES)
+	loader := newTestLoader(1, TRY_TIMES)
 	params := DownloadParams{
 		GoroutinesNum: GOROUTINES_NUMBER,
-		RetryTimes:    RETRY_TIMES,
+		TryTimes:      TRY_TIMES,
 	}
 	wg.Add(1)
 	go func() {
@@ -149,7 +177,7 @@ func TestCancel(t *testing.T) {
 	loader := newTestLoader(0, 0)
 	params := DownloadParams{
 		GoroutinesNum: GOROUTINES_NUMBER,
-		RetryTimes:    RETRY_TIMES,
+		TryTimes:      TRY_TIMES,
 	}
 	wg.Add(1)
 	go func() {
@@ -178,7 +206,7 @@ func TestSuccess(t *testing.T) {
 	loader := newTestLoader(0, 0)
 	params := DownloadParams{
 		GoroutinesNum: GOROUTINES_NUMBER,
-		RetryTimes:    RETRY_TIMES,
+		TryTimes:      TRY_TIMES,
 	}
 	wg.Add(1)
 	go func() {
@@ -206,7 +234,7 @@ func TestContent(t *testing.T) {
 	loader := DefaultLoader{}
 	params := DownloadParams{
 		GoroutinesNum: GOROUTINES_NUMBER,
-		RetryTimes:    RETRY_TIMES,
+		TryTimes:      TRY_TIMES,
 	}
 	wg.Add(1)
 	go func() {

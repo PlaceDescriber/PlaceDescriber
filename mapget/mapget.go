@@ -17,7 +17,15 @@ import (
 )
 
 const (
-	TILE_SIZE = 256
+	TILE_SIZE      = 256
+	MIN_ZOOM       = 0
+	MAX_ZOOM       = 25
+	MIN_SCALE      = 0
+	MAX_SCALE      = 5
+	MIN_TRY_TIMES  = 1
+	MAX_TRY_TIMES  = 20
+	MIN_GOROUTINES = 1
+	MAX_GOROUTINES = 1000
 )
 
 type MapDescription struct {
@@ -32,7 +40,7 @@ type MapDescription struct {
 
 type DownloadParams struct {
 	GoroutinesNum int `json:"goroutines_num"`
-	RetryTimes    int `json:"retry_times"`
+	TryTimes      int `json:"try_times"`
 }
 
 type DownloadTask struct {
@@ -85,6 +93,37 @@ func max(x, y int) int {
 	return y
 }
 
+func checkInput(mapDesc MapDescription, params DownloadParams) error {
+	if params.TryTimes < MIN_TRY_TIMES || params.TryTimes > MAX_TRY_TIMES {
+		return fmt.Errorf("TryTimes is out of range: %d", params.TryTimes)
+	}
+	if params.GoroutinesNum < MIN_GOROUTINES || params.GoroutinesNum > MAX_GOROUTINES {
+		return fmt.Errorf("GoroutinesNum is out of range: %d", params.GoroutinesNum)
+	}
+	_, ok := MapProjects[mapDesc.Provider]
+	if !ok {
+		return fmt.Errorf("Bad map provider %s", mapDesc.Provider)
+	}
+	typeStr, ok := types.MapTypeToStr[mapDesc.Type]
+	if !ok {
+		return fmt.Errorf("Bad map type %s", typeStr)
+	}
+	// TODO: check language here.
+	if mapDesc.MinZoom < MIN_ZOOM || mapDesc.MinZoom > MAX_ZOOM {
+		return fmt.Errorf("MinZoom is out of range: %d", mapDesc.MinZoom)
+	}
+	if mapDesc.MaxZoom < MIN_ZOOM || mapDesc.MaxZoom > MAX_ZOOM {
+		return fmt.Errorf("MaxZoom is out of range: %d", mapDesc.MaxZoom)
+	}
+	if mapDesc.Scale < MIN_SCALE || mapDesc.Scale > MAX_SCALE {
+		return fmt.Errorf("Scale is out of range: %d", mapDesc.Scale)
+	}
+	if mapDesc.MinZoom >= mapDesc.MaxZoom {
+		return fmt.Errorf("MinZoom is greater or equal to MaxZoom")
+	}
+	return nil
+}
+
 func extremeTileNumbers(
 	z int,
 	mapArea types.Polygon,
@@ -124,31 +163,31 @@ func downloadTile(
 
 func downloadTileWrapper(
 	ctx context.Context,
-	retryTimes int,
+	tryTimes int,
 	task *DownloadTask,
 	client Loader,
 ) (*geography.MapTile, error) {
-	for i := 0; i < retryTimes; i++ {
+	for i := 0; i < tryTimes; i++ {
 		tile, err := downloadTile(ctx, task, client)
 		if err == nil {
 			return tile, nil
 		}
 		log.Printf("downloadTile failed with %v", err)
 	}
-	err := fmt.Errorf("downloadTileWrapper: tried %d times and failed", retryTimes)
+	err := fmt.Errorf("downloadTileWrapper: tried %d times and failed", tryTimes)
 	log.Printf("%v", err)
 	return nil, err
 }
 
 func solveTasks(
 	ctx context.Context,
-	retryTimes int,
+	tryTimes int,
 	tasks <-chan *DownloadTask,
 	out chan<- *geography.MapTile,
 	client Loader,
 ) error {
 	for task := range tasks {
-		tile, err := downloadTileWrapper(ctx, retryTimes, task, client)
+		tile, err := downloadTileWrapper(ctx, tryTimes, task, client)
 		if err != nil {
 			return err
 		}
@@ -212,10 +251,15 @@ func DownloadMap(
 	out chan<- *geography.MapTile,
 	client Loader,
 ) error {
+	err := checkInput(mapDesc, params)
+	if err != nil {
+		close(out)
+		log.Printf("Incorrect input: %v.\n", err)
+		return err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	var mtx sync.Mutex
-	var err error
 	tasks := make(chan *DownloadTask)
 	wg.Add(1)
 	go func() {
@@ -233,7 +277,7 @@ func DownloadMap(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err1 := solveTasks(ctx, params.RetryTimes, tasks, out, client)
+			err1 := solveTasks(ctx, params.TryTimes, tasks, out, client)
 			if err1 != nil {
 				log.Printf("Task failed with %v.\n", err1)
 				mtx.Lock()

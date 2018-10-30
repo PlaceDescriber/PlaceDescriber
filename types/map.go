@@ -11,9 +11,18 @@ var StrToMapType = map[string]MapType{
 	"descriptor": DESCRIPTOR,
 }
 
+var MapTypeToStr map[MapType]string
+
 const (
 	PLAN MapType = iota
 	SATELLITE
 	HYBRID
 	DESCRIPTOR
 )
+
+func init() {
+	MapTypeToStr = make(map[MapType]string)
+	for key, val := range StrToMapType {
+		MapTypeToStr[val] = key
+	}
+}
