@@ -29,7 +29,7 @@ const (
 )
 
 type MapDescription struct {
-	MapArea  types.Polygon `json:"map_area":`
+	MapArea  types.Polygon `json:"map_area"`
 	Provider string        `json:"provider"`
 	Type     types.MapType `json:"type"`
 	Language string        `json:"language"`
@@ -130,8 +130,14 @@ func extremeTileNumbers(
 	converter geography.Conversion,
 ) (int, int, int, int, error) {
 	minLat, minLong, maxLat, maxLong, err := mapArea.ExtremeCoordinates()
-	x0, y0 := converter.DegToTileNum(types.Point{minLat, minLong}, z)
-	x1, y1 := converter.DegToTileNum(types.Point{maxLat, maxLong}, z)
+	x0, y0 := converter.DegToTileNum(
+		types.Point{Latitude: minLat, Longitude: minLong},
+		z,
+	)
+	x1, y1 := converter.DegToTileNum(
+		types.Point{Latitude: maxLat, Longitude: maxLong},
+		z,
+	)
 	return min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1), err
 }
 

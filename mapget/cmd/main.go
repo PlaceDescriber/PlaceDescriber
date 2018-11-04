@@ -79,6 +79,7 @@ func main() {
 		log.Fatalf("You must specify path to JSON file with coordinates using coordinates option.")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	var wg sync.WaitGroup
 	typeO, ok := types.StrToMapType[*mapType]
 	if !ok {
@@ -143,13 +144,11 @@ func main() {
 		tileFileName := fmt.Sprintf("%d", tile.Y)
 		tileFile, err0 := os.Create(filepath.Join(tileDirPath, tileFileName))
 		if err0 != nil {
-			cancel()
 			wg.Wait()
 			log.Fatalf("Failed to creare tile file: %v", err0)
 		}
 		_, err0 = tileFile.Write(tile.Content)
 		if err0 != nil {
-			cancel()
 			wg.Wait()
 			log.Fatalf("Failed to write to tile file: %v", err0)
 		}

@@ -60,7 +60,7 @@ func (s SphericalConversion) TileNumToDeg(x, y, z int) types.Point {
 	n := math.Pi - 2.0*math.Pi*float64(y)/math.Exp2(float64(z))
 	lat := 180.0 / math.Pi * math.Atan(0.5*(math.Exp(n)-math.Exp(-n)))
 	long := float64(x)/math.Exp2(float64(z))*360.0 - 180.0
-	return types.Point{lat, long}
+	return types.Point{Latitude: lat, Longitude: long}
 }
 
 // Elliptical Mercator.
@@ -100,5 +100,5 @@ func (s EllipticalConversion) TileNumToDeg(x, y, z int) types.Point {
 		phi += dphi
 	}
 	lat := R_D * phi
-	return types.Point{lat, long}
+	return types.Point{Latitude: lat, Longitude: long}
 }

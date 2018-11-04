@@ -41,6 +41,7 @@ func (s *TilesHandler) serveTiles(w http.ResponseWriter, r *http.Request, save b
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	tiles := make(chan *geography.MapTile)
 	go mapget.DownloadMap(
 		ctx,
@@ -54,20 +55,17 @@ func (s *TilesHandler) serveTiles(w http.ResponseWriter, r *http.Request, save b
 			_, err := s.client.SaveTile(ctx, tile)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
-				cancel()
 				return
 			}
 		}
 		tileBytes, err := json.Marshal(tile)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
-			cancel()
 			return
 		}
 		err = s.publisher.PublishRaw(nil, "", tileBytes)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
-			cancel()
 			return
 		}
 	}
