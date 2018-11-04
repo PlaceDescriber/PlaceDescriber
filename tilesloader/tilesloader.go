@@ -85,6 +85,6 @@ func NewHandler(
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/load-tiles/save", tilesHandler.ServeWithSave)
-	mux.HandleFunc("/load-tiles", tilesHandler.ServeOnlyHandling)
+	mux.HandleFunc("/load-tiles/handle", tilesHandler.ServeOnlyHandling)
 	return mux
 }
