@@ -4,15 +4,17 @@
 package databases
 
 import (
+	"context"
+
 	"github.com/PlaceDescriber/PlaceDescriber/geography"
 )
 
 type TilesDatabase interface {
-	SaveTile(*geography.MapTile) (string, error)
-	GetTile(key string) (*geography.MapTile, error)
+	SaveTile(ctx context.Context, tile *geography.MapTile) (string, error)
+	GetTile(ctx context.Context, key string) (*geography.MapTile, error)
 }
 
 type KeyValueStorage interface {
-	Set(bucket, key string, value []byte) error
-	Get(bucket, key string) ([]byte, error)
+	Set(ctx context.Context, bucket, key string, value []byte) error
+	Get(ctx context.Context, bucket, key string) ([]byte, error)
 }

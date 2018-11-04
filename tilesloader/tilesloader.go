@@ -51,7 +51,7 @@ func (s *TilesHandler) serveTiles(w http.ResponseWriter, r *http.Request, save b
 	)
 	for tile := range tiles {
 		if save {
-			_, err := s.client.SaveTile(tile)
+			_, err := s.client.SaveTile(ctx, tile)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				cancel()
