@@ -23,7 +23,10 @@ const (
 )
 
 func testConversion(converter Conversion, x, y int, lat, long float64) error {
-	res_x, res_y := converter.DegToTileNum(types.Point{LATITUDE, LONGITUDE}, ZOOM)
+	res_x, res_y := converter.DegToTileNum(
+		types.Point{Latitude: LATITUDE, Longitude: LONGITUDE},
+		ZOOM,
+	)
 	if res_x != x {
 		return errors.New("DegToTileNum returned invalid x")
 	}

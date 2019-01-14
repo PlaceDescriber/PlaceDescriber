@@ -66,12 +66,12 @@ func initMapDescription() MapDescription {
 	area := types.Polygon{
 		Vertices: []types.Point{
 			// The Atlantic Ocean.
-			types.Point{40.710476, -22.466572},
-			types.Point{40.716877, -22.453697},
-			types.Point{40.715669, -22.451766},
-			types.Point{40.721644, -22.432003},
-			types.Point{40.719889, -22.428441},
-			types.Point{40.716869, -22.437904},
+			types.Point{Latitude: 40.710476, Longitude: -22.466572},
+			types.Point{Latitude: 40.716877, Longitude: -22.453697},
+			types.Point{Latitude: 40.715669, Longitude: -22.451766},
+			types.Point{Latitude: 40.721644, Longitude: -22.432003},
+			types.Point{Latitude: 40.719889, Longitude: -22.428441},
+			types.Point{Latitude: 40.716869, Longitude: -22.437904},
 		},
 	}
 	return MapDescription{
